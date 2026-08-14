@@ -61,14 +61,36 @@ $ArchiveUrl = "$Base/$Archive"
 # ── Download ───────────────────────────────────────────────────────────────
 Write-Host "  Downloading $App $Version (windows/$osarch)..." -ForegroundColor DarkGray
 $zip = Join-Path $env:TEMP $Archive
-Invoke-WebRequest -Uri $ArchiveUrl -OutFile $zip
+try {
+    Invoke-WebRequest -Uri $ArchiveUrl -OutFile $zip
+} catch {
+    # Not every release ships a windows_arm64 build yet. Windows on ARM runs
+    # x64 apps via emulation, so fall back to the amd64 build in that case.
+    if ($osarch -eq "arm64") {
+        Write-Host "  No windows/arm64 build for $Version — using windows/amd64 (runs via Windows on ARM emulation)." -ForegroundColor Yellow
+        $osarch = "amd64"
+        $Archive = "lf_${Version}_windows_${osarch}.zip"
+        $ArchiveUrl = "$Base/$Archive"
+        $zip = Join-Path $env:TEMP $Archive
+        Invoke-WebRequest -Uri $ArchiveUrl -OutFile $zip
+    } else {
+        throw "Download failed: $ArchiveUrl ($_)"
+    }
+}
 if (-not (Test-Path $zip)) {
     throw "Download failed: $ArchiveUrl"
 }
 
 # ── Verify SHA-256 against the release checksums.txt ───────────────────────
 try {
-    $checksums = (Invoke-WebRequest -Uri "$Base/checksums.txt" -UseBasicParsing).Content -split "`r?`n"
+    # GoReleaser serves checksums.txt as application/octet-stream, so PS7
+    # returns .Content as Byte[]. Decode it to text before splitting.
+    $resp = Invoke-WebRequest -Uri "$Base/checksums.txt" -UseBasicParsing
+    if ($resp.Content -is [byte[]]) {
+        $checksums = [Text.Encoding]::UTF8.GetString($resp.Content) -split "`r?`n"
+    } else {
+        $checksums = ([string]$resp.Content) -split "`r?`n"
+    }
 } catch {
     Write-Host "  Warning: could not fetch checksums.txt ($_) — skipping verification." -ForegroundColor Yellow
     $checksums = @()
@@ -98,9 +120,10 @@ Write-Host ("  OK  Installed lf {0} to {1}" -f $Version, $Dest) -ForegroundColor
 
 # ── Add to user PATH (persists; applies to NEW terminals) ──────────────────
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-$inPath = ($userPath -split ";") | Where-Object { $_ -and ($_ -eq $Dest) }
+if ([string]::IsNullOrEmpty($userPath)) { $userPath = "" }
+$inPath = @($userPath -split ";") | Where-Object { $_ -and ($_.TrimEnd("\") -eq $Dest) }
 if (-not $inPath) {
-    $sep = if ($userPath.EndsWith(";") -or [string]::IsNullOrEmpty($userPath)) { "" } else { ";" }
+    $sep = if ($userPath.EndsWith(";")) { "" } else { ";" }
     [Environment]::SetEnvironmentVariable("Path", "$userPath$sep$Dest", "User")
     Write-Host "  OK  Added $Dest to your user PATH (new terminals only)." -ForegroundColor Green
 } else {
