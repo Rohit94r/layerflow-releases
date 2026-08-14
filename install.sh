@@ -56,5 +56,5 @@ install -m 0755 "$TMP/$BINARY" "$INSTALL_DIR/$BINARY"
 
 echo ""
 echo "Installed $BINARY ${VERSION} to $INSTALL_DIR/$BINARY"
-echo "Run '$BINARY --version' to confirm, or '$BINARY login' to get started."
+echo "Run '$BINARY version' to confirm, or '$BINARY login' to get started."
 echo "Add $INSTALL_DIR to your PATH if it is not already."
