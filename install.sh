@@ -4,11 +4,15 @@ set -e
 # LayerFlow CLI installer — one line:
 #   curl -fsSL https://raw.githubusercontent.com/Rohit94r/layerflow-releases/main/install.sh | bash
 #
-# Downloads the prebuilt `lf` binary for your OS/arch from this repo's
-# GitHub Releases. The LayerFlow source stays private — only binaries are here.
+# Downloads the prebuilt `lf` binary for your OS/arch from the public
+# layerflow-releases repo. The LayerFlow source stays private — only
+# binaries live in the public repo.
+#
+# Also installs a `layerflow` symlink so both `lf` and `layerflow` work.
 
 REPO="Rohit94r/layerflow-releases"
 BINARY="lf"
+ALIAS="layerflow"
 VERSION="${VERSION:-latest}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
@@ -31,10 +35,15 @@ if [ "$VERSION" = "latest" ]; then
 fi
 if [ -z "$VERSION" ]; then
   echo "error: could not resolve the latest version" >&2
+  echo "note:  the public release repo has no releases yet, or GitHub is unreachable." >&2
+  echo "note:  make sure the repo ${REPO} exists and has at least one release." >&2
   exit 1
 fi
 
-TARBALL="lf_${VERSION}_${OS}_${ARCH}.tar.gz"
+# GoReleaser strips the leading "v" from tags in archive names, so "v0.2.0"
+# becomes lf_0.2.0_darwin_arm64.tar.gz.
+TAG="${VERSION#v}"
+TARBALL="lf_${TAG}_${OS}_${ARCH}.tar.gz"
 BASE="https://github.com/${REPO}/releases/download/${VERSION}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -53,8 +62,9 @@ fi
 mkdir -p "$INSTALL_DIR"
 tar -xzf "${TMP}/${TARBALL}" -C "$TMP" "$BINARY"
 install -m 0755 "$TMP/$BINARY" "$INSTALL_DIR/$BINARY"
+ln -sf "$BINARY" "$INSTALL_DIR/$ALIAS"
 
 echo ""
-echo "Installed $BINARY ${VERSION} to $INSTALL_DIR/$BINARY"
+echo "Installed $BINARY ${VERSION} to $INSTALL_DIR/$BINARY (alias: $ALIAS)"
 echo "Run '$BINARY version' to confirm, or '$BINARY login' to get started."
 echo "Add $INSTALL_DIR to your PATH if it is not already."
